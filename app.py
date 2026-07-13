@@ -3,46 +3,35 @@
 # AI Powered Email Summarization using DistilBART
 # ==========================================================
 
-# ==========================================================
-# Import Libraries with Fallbacks
-# ==========================================================
-
-import streamlit as st
 import subprocess
 import sys
 import os
 
-# Auto-install missing packages
-def install_package(package):
-    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+# === FORCE INSTALL TORCH ===
+def install_torch():
+    try:
+        import torch
+        print("✅ PyTorch already installed")
+        return True
+    except ImportError:
+        print("⏳ Installing PyTorch...")
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install", 
+            "torch", "torchvision", "torchaudio",
+            "--index-url", "https://download.pytorch.org/whl/cpu"
+        ])
+        return True
 
-# Try importing torch, install if missing
-try:
-    import torch
-except ImportError:
-    st.warning("Installing PyTorch... This may take a moment.")
-    install_package("torch")
-    import torch
+install_torch()
 
-try:
-    import transformers
-except ImportError:
-    st.warning("Installing Transformers...")
-    install_package("transformers")
-    import transformers
+# ==========================================================
+# Import Libraries
+# ==========================================================
 
-try:
-    import PyPDF2
-except ImportError:
-    install_package("PyPDF2")
-    import PyPDF2
-
-try:
-    import spacy
-except ImportError:
-    install_package("spacy")
-    import spacy
-
+import streamlit as st
+import torch
+import PyPDF2
+import spacy
 from transformers import BartTokenizer, BartForConditionalGeneration
 from transformers import pipeline
 
@@ -65,7 +54,6 @@ def load_spacy():
     try:
         return spacy.load("en_core_web_sm")
     except OSError:
-        st.info("Downloading spaCy model...")
         subprocess.run([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
         return spacy.load("en_core_web_sm")
 
@@ -77,9 +65,7 @@ nlp = load_spacy()
 
 @st.cache_resource
 def load_model():
-    # Use Hugging Face model directly
     model_name = "sshleifer/distilbart-cnn-12-6"
-    
     tokenizer = BartTokenizer.from_pretrained(model_name)
     model = BartForConditionalGeneration.from_pretrained(
         model_name,
@@ -96,11 +82,10 @@ tokenizer, model = load_model()
 
 @st.cache_resource
 def load_sentiment_model():
-    sentiment = pipeline(
+    return pipeline(
         "sentiment-analysis",
         model="distilbert-base-uncased-finetuned-sst-2-english"
     )
-    return sentiment
 
 sentiment_model = load_sentiment_model()
 
@@ -115,7 +100,6 @@ def summarize_email(text):
         truncation=True,
         max_length=1024
     )
-
     with torch.no_grad():
         summary_ids = model.generate(
             inputs["input_ids"],
@@ -124,7 +108,6 @@ def summarize_email(text):
             num_beams=4,
             early_stopping=True
         )
-
     summary = tokenizer.decode(
         summary_ids[0],
         skip_special_tokens=True
@@ -138,14 +121,11 @@ def summarize_email(text):
 def extract_keywords(text):
     doc = nlp(text)
     keywords = []
-
     for token in doc:
         if token.pos_ in ["NOUN", "PROPN"]:
             word = token.text.lower()
-            if len(word) > 2:
-                if word not in keywords:
-                    keywords.append(word)
-
+            if len(word) > 2 and word not in keywords:
+                keywords.append(word)
     return keywords[:8]
 
 # ==========================================================
@@ -163,10 +143,8 @@ def analyze_sentiment(text):
 def extract_entities(text):
     doc = nlp(text)
     entities = []
-
     for ent in doc.ents:
         entities.append((ent.text, ent.label_))
-
     return entities
 
 # ==========================================================
@@ -182,7 +160,6 @@ This AI application summarizes long emails using
 the DistilBART Transformer model.
 
 ### Features
-
 • AI Email Summarization
 • TXT/PDF Upload
 • Keyword Extraction
@@ -203,26 +180,15 @@ the DistilBART Transformer model.
 # ==========================================================
 
 st.title("📧 Smart Email Summarizer")
-st.write("""
-Generate concise summaries of long emails using the
-**DistilBART Transformer Model**.
-""")
+st.write("Generate concise summaries of long emails using the **DistilBART Transformer Model**.")
 st.markdown("---")
 
 # ==========================================================
 # Upload Email File
 # ==========================================================
 
-uploaded_file = st.file_uploader(
-    "📂 Upload Email (.txt or .pdf)",
-    type=["txt", "pdf"]
-)
-
+uploaded_file = st.file_uploader("📂 Upload Email (.txt or .pdf)", type=["txt", "pdf"])
 email = ""
-
-# ==========================================================
-# Read Uploaded File
-# ==========================================================
 
 if uploaded_file is not None:
     if uploaded_file.type == "text/plain":
@@ -238,12 +204,7 @@ if uploaded_file is not None:
 # Email Text Area
 # ==========================================================
 
-email = st.text_area(
-    "📨 Or Paste Your Email Here",
-    value=email,
-    height=250,
-    placeholder="Paste your email here..."
-)
+email = st.text_area("📨 Or Paste Your Email Here", value=email, height=250, placeholder="Paste your email here...")
 
 # ==========================================================
 # Email Statistics
@@ -256,7 +217,6 @@ if email.strip():
 
     st.subheader("📊 Email Statistics")
     col1, col2, col3 = st.columns(3)
-
     with col1:
         st.metric("📝 Words", words)
     with col2:
@@ -281,13 +241,10 @@ if st.button("🚀 Generate Summary"):
         st.subheader("📄 AI Generated Summary")
         st.info(summary)
 
-        # ==========================================================
-        # Keyword Extraction
-        # ==========================================================
+        # Keywords
         st.markdown("---")
         st.subheader("🏷️ Extracted Keywords")
         keywords = extract_keywords(email)
-
         if len(keywords) > 0:
             cols = st.columns(4)
             for i, keyword in enumerate(keywords):
@@ -295,45 +252,35 @@ if st.button("🚀 Generate Summary"):
         else:
             st.info("No keywords found.")
 
-        # ==========================================================
-        # Sentiment Analysis
-        # ==========================================================
+        # Sentiment
         st.markdown("---")
         st.subheader("😊 Email Sentiment")
         sentiment = analyze_sentiment(email)
         label = sentiment["label"]
         score = sentiment["score"]
-
         if label == "POSITIVE":
             st.success(f"😊 Positive ({score:.2%} confidence)")
         else:
             st.error(f"😞 Negative ({score:.2%} confidence)")
 
-        # ==========================================================
-        # Named Entity Recognition
-        # ==========================================================
+        # NER
         st.markdown("---")
         st.subheader("👤 Named Entities")
         entities = extract_entities(email)
-
         if entities:
             for entity, label in entities:
                 st.write(f"**{entity}** → {label}")
         else:
             st.info("No named entities found.")
 
-        # ==========================================================
-        # Summary Analytics
-        # ==========================================================
+        # Analytics
         st.markdown("---")
         st.subheader("📊 Summary Analytics")
-
         original_words = len(email.split())
         summary_words = len(summary.split())
         compression = round((1 - (summary_words / original_words)) * 100, 2)
 
         col1, col2, col3 = st.columns(3)
-
         with col1:
             st.metric("Original Words", original_words)
         with col2:
@@ -341,9 +288,7 @@ if st.button("🚀 Generate Summary"):
         with col3:
             st.metric("Compression", f"{compression}%")
 
-        # ==========================================================
-        # Download Summary
-        # ==========================================================
+        # Download
         st.download_button(
             label="📥 Download Summary",
             data=summary,
